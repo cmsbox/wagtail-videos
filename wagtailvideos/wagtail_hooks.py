@@ -29,7 +29,7 @@ class TracksAdminViewset(ModelViewSet):
 
     list_display = ("__str__", "track_count")
 
-    panels = [VideoChooserPanel("video"), InlinePanel("tracks", heading="Tracks")]
+    panels = [VideoChooserPanel("video"), InlinePanel("tracks", heading=_("Tracks"))]
 
 
 tracks_viewset = TracksAdminViewset("wagtailvideos_tracks")
