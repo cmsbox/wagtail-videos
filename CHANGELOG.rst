@@ -6,6 +6,9 @@ CHANGELOG
 
 - Added chunked upload support for large files
 - Register the permission policy with Wagtail 8's registry instead of setting it on the chooser viewset, which Wagtail 8 deprecates (@mortenthansen)
+- Fixed usage count/listing: use the reference index so videos used in StreamFields are counted; usage page now uses Wagtail's generic ``UsageView``
+- Edit view is now a generic ``EditView`` (slim header with breadcrumbs, delete in the "more" menu, sticky save footer), like images and documents
+- Delete view is now a generic ``DeleteView``: shows the usage count, blocks deletion if a reference is protected, and has a "No, don't delete" button, like images and documents
 
 
 7.2.0

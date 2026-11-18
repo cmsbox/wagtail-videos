@@ -6,7 +6,7 @@ app_name = 'wagtailvideos'
 
 urlpatterns = [
     path('add/', videos.add, name='add'),
-    re_path(r'^usage/(\d+)/$', videos.usage, name='video_usage'),
+    path("usage/<int:video_id>/", videos.UsageView.as_view(), name="video_usage"),
 
     path("multiple/add/", multiple.AddView.as_view(), name="add_multiple"),
     path("multiple/<int:video_id>/", multiple.EditView.as_view(), name="edit_multiple"),
@@ -26,10 +26,10 @@ urlpatterns = [
         name="delete_upload_multiple",
     ),
 
-    re_path(r'^(\d+)/delete/$', videos.delete, name='delete'),
+    path("<int:video_id>/delete/", videos.DeleteView.as_view(), name="delete"),
     re_path(r'^(\d+)/create_transcode/$', videos.create_transcode, name='create_transcode'),
     re_path(r'^(\d+)/delete_transcode/(\d+)$', videos.delete_transcode, name='delete_transcode'),
-    re_path(r'^(\d+)/$', videos.edit, name='edit'),
+    path("<int:video_id>/", videos.EditView.as_view(), name="edit"),
     path('', videos.IndexView.as_view(), name='index'),
     path("results/", videos.IndexView.as_view(results_only=True), name="index_results"),
 ]

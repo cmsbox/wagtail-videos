@@ -14,8 +14,7 @@ from django.utils.translation import gettext_lazy as _
 from modelcluster.fields import ParentalKey
 from modelcluster.models import ClusterableModel
 from taggit.managers import TaggableManager
-from wagtail.admin.models import get_object_usage
-from wagtail.models import CollectionMember, Orderable
+from wagtail.models import CollectionMember, Orderable, ReferenceIndex
 from wagtail.search import index
 from wagtail.search.queryset import SearchableQuerySetMixin
 
@@ -120,7 +119,7 @@ class AbstractVideo(CollectionMember, index.Indexed, models.Model):
         return os.path.join(folder_name, filename)
 
     def get_usage(self):
-        return get_object_usage(self)
+        return ReferenceIndex.get_grouped_references_to(self)
 
     @property
     def usage_url(self):

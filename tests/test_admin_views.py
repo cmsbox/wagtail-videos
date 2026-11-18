@@ -285,6 +285,54 @@ class TestVideoEditView(TestCase, WagtailTestUtils):
         video = Video.objects.get(id=self.video.id)
         self.assertNotEqual(video.file_size, 100000)
 
+    def test_header_breadcrumbs_and_delete_action(self):
+        response = self.get()
+        self.assertContains(response, 'data-w-breadcrumbs')
+        self.assertContains(response, reverse("wagtailvideos:index"))
+        self.assertContains(
+            response, reverse("wagtailvideos:delete", args=(self.video.id,))
+        )
+        self.assertContains(response, 'id="w-editor-form"')
+
+    def test_edit_redirects_to_index(self):
+        response = self.post({"title": "Edited"})
+        self.assertRedirects(response, reverse("wagtailvideos:index"))
+
+    def test_edit_redirects_to_next(self):
+        next_url = reverse("wagtailvideos:index") + "?q=foo"
+        response = self.post({"title": "Edited", "next": next_url})
+        self.assertRedirects(response, next_url)
+
+    def test_edit_invalid(self):
+        response = self.post({"title": ""})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "The video could not be saved due to errors.")
+
+    def test_edit_with_new_video_file_deletes_old_file(self):
+        old_name = self.video.file.name
+        storage = self.video.file.storage
+        self.assertTrue(storage.exists(old_name))
+        new_file = create_test_video_file()
+        self.post(
+            {
+                "title": "Edited",
+                "file": SimpleUploadedFile("new.mp4", new_file.read(), "video/mp4"),
+            }
+        )
+        video = Video.objects.get(id=self.video.id)
+        self.assertNotEqual(video.file.name, old_name)
+        self.assertFalse(storage.exists(old_name))
+        self.assertTrue(storage.exists(video.file.name))
+
+    def test_edit_without_permission(self):
+        user = get_user_model().objects.create_user(
+            username="editor", email="editor@example.com", password="password"
+        )
+        user.user_permissions.add(Permission.objects.get(codename="access_admin"))
+        self.client.force_login(user)
+        response = self.get()
+        self.assertRedirects(response, reverse("wagtailadmin_home"))
+
     def test_with_missing_video_file(self):
         self.video.file.delete(False)
 
@@ -787,3 +835,99 @@ class TestDeleteTranscode(TestCase, WagtailTestUtils):
 
         # Should delete the transcode
         self.assertFalse(VideoTranscode.objects.filter(id=transcode.id).exists())
+
+
+class TestVideoUsage(WagtailTestUtils, TestCase):
+    def setUp(self):
+        self.login()
+        self.video = Video.objects.create(
+            title="Test video",
+            file=create_test_video_file(),
+        )
+
+    def add_page_with_video_in_streamfield(self):
+        from wagtail.models import Page
+
+        from tests.app.models import TestPage
+
+        root = Page.get_first_root_node()
+        return root.add_child(
+            instance=TestPage(
+                title="Page using video",
+                slug="page-using-video",
+                video_streamfield=[("video", self.video)],
+            )
+        )
+
+    def test_get_usage_unused(self):
+        self.assertEqual(len(self.video.get_usage()), 0)
+
+    def test_get_usage_streamfield(self):
+        page = self.add_page_with_video_in_streamfield()
+        usage = self.video.get_usage()
+        self.assertEqual(len(usage), 1)
+        self.assertEqual(next(iter(usage))[0].specific, page)
+
+    def test_get_usage_foreign_key(self):
+        from wagtail.models import Page
+
+        from tests.app.models import CustomVideoModel, TestPage
+
+        video = CustomVideoModel.objects.create(
+            title="Custom video", file=create_test_video_file()
+        )
+        page = Page.get_first_root_node().add_child(
+            instance=TestPage(title="FK page", slug="fk-page", video_field=video)
+        )
+        usage = video.get_usage()
+        self.assertEqual(len(usage), 1)
+        self.assertEqual(next(iter(usage))[0].specific, page)
+
+    def test_edit_view_usage_count(self):
+        self.add_page_with_video_in_streamfield()
+        response = self.client.get(reverse("wagtailvideos:edit", args=(self.video.id,)))
+        self.assertContains(response, "Used 1 time")
+
+    def test_delete_view_shows_usage(self):
+        self.add_page_with_video_in_streamfield()
+        response = self.client.get(reverse("wagtailvideos:delete", args=(self.video.id,)))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "This video is referenced 1 time.")
+        self.assertContains(
+            response, reverse("wagtailvideos:video_usage", args=(self.video.id,))
+        )
+        self.assertContains(response, "Yes, delete")
+
+    def test_delete_view_unused(self):
+        response = self.client.get(reverse("wagtailvideos:delete", args=(self.video.id,)))
+        self.assertContains(response, "This video is referenced 0 times.")
+
+    def test_delete_used_video(self):
+        self.add_page_with_video_in_streamfield()
+        response = self.client.post(reverse("wagtailvideos:delete", args=(self.video.id,)))
+        self.assertRedirects(response, reverse("wagtailvideos:index"))
+        self.assertFalse(Video.objects.filter(id=self.video.id).exists())
+
+    def test_usage_view(self):
+        self.add_page_with_video_in_streamfield()
+        response = self.client.get(reverse("wagtailvideos:video_usage", args=(self.video.id,)))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Page using video")
+        self.assertContains(response, "Test video")
+
+    def test_usage_view_unused(self):
+        response = self.client.get(reverse("wagtailvideos:video_usage", args=(self.video.id,)))
+        self.assertEqual(response.status_code, 200)
+
+    def test_usage_view_404(self):
+        response = self.client.get(reverse("wagtailvideos:video_usage", args=(999999,)))
+        self.assertEqual(response.status_code, 404)
+
+    def test_usage_view_requires_change_permission(self):
+        user = get_user_model().objects.create_user(
+            username="editor", email="editor@example.com", password="password"
+        )
+        user.user_permissions.add(Permission.objects.get(codename="access_admin"))
+        self.client.force_login(user)
+        response = self.client.get(reverse("wagtailvideos:video_usage", args=(self.video.id,)))
+        self.assertRedirects(response, reverse("wagtailadmin_home"))
